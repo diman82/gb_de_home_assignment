@@ -38,8 +38,6 @@ def data_loading_and_structuring():
 
     spark = SparkSession \
         .builder \
-        .config("spark.driver.memory", "15g") \
-        .config("spark.driver.maxResultSize ", "0") \
         .appName('gb_de_home_assignment') \
         .getOrCreate()
 
@@ -64,8 +62,11 @@ def data_loading_and_structuring():
                          StructField('struggle_score_too_many_tilts', StringType(), True)
                          ])
 
-    res_df = spark.createDataFrame(data=sessions_df.select("struggle_score_types").rdd, schema=schema)
-    res_df = res_df.toDF(*res_df.columns)
+    struggle_scrore_df = sessions_df.select("struggle_score_types").collect()
+    struggle_scrore_df.printSchema()
+    res_df = spark.createDataFrame(data=struggle_scrore_df.rdd, schema=schema)
+    res_df.printSchema()
+    print(res_df.take(1))
     sessions_df.drop("struggle_score_types").collect()
 
     w = Window.orderBy(monotonically_increasing_id())
