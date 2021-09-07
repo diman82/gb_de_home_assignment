@@ -1,4 +1,5 @@
+# python3 -m pip install --user -U -r requirements.txt
 rootpath
 findspark
 pyspark
-pandas
+apache-airflow==1.10.12

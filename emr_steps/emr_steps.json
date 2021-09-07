@@ -1,0 +1,19 @@
+[
+  {
+    "Name": "Run Spark job",
+    "ActionOnFailure": "CONTINUE",
+    "HadoopJarStep": {
+      "Jar": "command-runner.jar",
+      "Args": [
+        "spark-submit",
+        "--deploy-mode",
+        "cluster",
+        "--master",
+        "yarn",
+        "--conf",
+        "spark.yarn.submit.waitAppCompletion=true",
+        "s3a://{{ var.value.work_bucket }}/analyze/spark_pi_example.py"
+      ]
+    }
+  }
+]

@@ -9,22 +9,6 @@ import findspark
 import rootpath
 
 
-def shakespeare_word_count():
-    findspark.init()
-    conf = SparkConf().setAppName('MyFirstStandaloneApp')
-    sc = SparkContext(conf=conf)
-
-    print("loading text file")
-    text_file = sc.textFile("./shakespeare.txt")
-
-    counts = text_file.flatMap(lambda line: line.split(" ")) \
-        .map(lambda word: (word, 1)) \
-        .reduceByKey(lambda a, b: a + b)
-
-    print("Number of elements: " + str(counts.count()))
-    counts.saveAsTextFile("./shakespeareWordCount")
-
-
 def data_loading():
     findspark.init()
     findspark.find()
@@ -53,6 +37,28 @@ def data_loading():
 
 
 def transformations_and_aggregations():
+    # flatmap the 'struggle_score_types' field, containing array of ditionaries
+    schema = StructType([StructField('struggle_score_rage_click', StringType(), True),
+                         StructField('struggle_score_zoom', StringType(), True),
+                         StructField('struggle_score_http_error', StringType(), True),
+                         StructField('struggle_score_dead_click', StringType(), True),
+                         StructField('struggle_score_app_crash', StringType(), True),
+                         StructField('struggle_score_http_response_time', StringType(), True),
+                         StructField('struggle_score_too_many_tilts', StringType(), True)
+                         ])
+
+    res_df = spark.createDataFrame(data=session_df.select("struggle_score_types").rdd, schema=schema)
+    res_df.printSchema()
+    session_df.drop("struggle_score_types")
+
+    w = Window.orderBy(monotonically_increasing_id())
+    sessions_df = session_df.withColumn("row_index", row_number().over(w))
+    res_df = res_df.withColumn("row_index", row_number().over(w))
+
+    sessions_df = sessions_df.join(res_df, on=["row_index"]).drop("row_index")
+    print(sessions_df.columns)
+
+
     client_flows_df.groupBy("session_uuid")\
         .agg(count("successful").alias("client_flows_per_session"),
              sum("click_count").alias("click_count_per_session"),
@@ -92,26 +98,6 @@ def transformations_and_aggregations():
     page_loads_joined_df = page_loads_df.join(data_counts, "session_uuid").dropDuplicates()
     page_loads_joined_df.show(truncate=False)
 
-    # flatmap the 'struggle_score_types' field, containing array of ditionaries
-    schema = StructType([StructField('struggle_score_rage_click', StringType(), True),
-                         StructField('struggle_score_zoom', StringType(), True),
-                         StructField('struggle_score_http_error', StringType(), True),
-                         StructField('struggle_score_dead_click', StringType(), True),
-                         StructField('struggle_score_app_crash', StringType(), True),
-                         StructField('struggle_score_http_response_time', StringType(), True),
-                         StructField('struggle_score_too_many_tilts', StringType(), True)
-                         ])
-
-    res_df = spark.createDataFrame(data=session_df.select("struggle_score_types").rdd, schema=schema)
-    res_df.printSchema()
-    session_df.drop("struggle_score_types")
-
-    w = Window.orderBy(monotonically_increasing_id())
-    sessions_df = session_df.withColumn("row_index", row_number().over(w))
-    res_df = res_df.withColumn("row_index", row_number().over(w))
-
-    sessions_df = sessions_df.join(res_df, on=["row_index"]).drop("row_index")
-    print(sessions_df.columns)
 
 
     cond = [dataset_df.plc_name == metadata_df.plc_name]
@@ -128,6 +114,10 @@ def transformations_and_aggregations():
     #     .parquet("result.parquet")  # write supporting HDFS
 
 
-if __name__ == "__main__":
+def run_spark_job():
     data_loading()
     transformations_and_aggregations()
+
+
+if __name__ == "__main__":
+    run_spark_job()
