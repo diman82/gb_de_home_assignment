@@ -70,56 +70,63 @@ def transformations_and_aggregations():
     print(sessions_df.columns)
 
     client_flows_df.groupBy("session_uuid") \
-        .agg(count("successful").alias("client_flows_per_session"),
-             sum("click_count").alias("click_count_per_session"),
-             sum("click_repetition_count").alias("click_count_per_session"),
-             sum("field_change_count").alias("field_change_count_per_session"),
-             sum("field_change_repetitions").alias("field_change_repetition_per_session"),
-             max("close_reason").alias("most_common_close_reason_per_session"),
-             ) \
-        .show(truncate=False)
-    client_flows_df.groupBy("session_uuid") \
         .agg(count("successful").alias("successful_true"),
              sum("click_count").alias("total_click_count_per_session"),
-             sum("click_repetition_count").alias("total_click_count_per_session"),
+             sum("click_repetition_count").alias("total_click_repetition_count_per_session"),
              sum("field_change_count").alias("total_field_change_count_per_session"),
              sum("field_change_repetitions").alias("total_field_change_repetition_per_session"),
-             max("close_reason").alias("most_common_close_reason_per_session"),
+             max("close_reason").alias("max_common_close_reason_per_session"),
              ) \
         .where(col("successful_true") == True) \
         .show(truncate=False)
     client_flows_df.groupBy("session_uuid") \
         .agg(count("successful").alias("successful_false"),
              sum("click_count").alias("total_click_count_per_session"),
-             sum("click_repetition_count").alias("total_click_count_per_session"),
+             sum("click_repetition_count").alias("total_click_repetition_count_per_session"),
              sum("field_change_count").alias("total_field_change_count_per_session"),
              sum("field_change_repetitions").alias("total_field_change_repetition_per_session"),
-             max("close_reason").alias("most_common_close_reason_per_session"),
+             max("close_reason").alias("max_common_close_reason_per_session"),
              ) \
         .where(col("successful_false") == False) \
         .show(truncate=False)
 
+    client_flows_after_agg_df = client_flows_df.groupBy("session_uuid") \
+        .agg(count("successful").alias("client_flows_per_session"),
+             sum("click_count").alias("total_click_count_per_session"),
+             sum("click_repetition_count").alias("total_click_repetition_count_per_session"),
+             sum("field_change_count").alias("field_change_count_per_session"),
+             sum("field_change_repetitions").alias("field_change_repetition_per_session"),
+             max("close_reason").alias("max_common_close_reason_per_session"),
+             )
+
     data_counts = page_loads_df.groupBy("session_uuid") \
         .agg(count("hit_ts").alias("page_loads_per_session"),
-             max("struggle_score").alias("most_common_close_reason_per_session"),
-             min("struggle_score").alias("most_common_close_reason_per_session"),
+             max("struggle_score").alias("max_common_close_reason_per_session"),
+             min("struggle_score").alias("min_common_close_reason_per_session"),
              )
     page_loads_joined_df = page_loads_df.join(data_counts, "session_uuid").dropDuplicates()
+    page_loads_joined_df = page_loads_joined_df\
+        .drop(page_loads_joined_df.max_common_close_reason_per_session)\
+        .drop(page_loads_joined_df.session_ts)\
+        .drop(page_loads_joined_df.struggle_score)
+    # https://stackoverflow.com/questions/46944493/removing-duplicate-columns-after-a-df-join-in-spark
     page_loads_joined_df.show(truncate=False)
 
-    cond1 = [sessions_df.session_uuid == client_flows_df.session_uuid]
+    cond1 = [sessions_df.session_uuid == client_flows_after_agg_df.session_uuid]
     first_join_df = sessions_df \
-        .join(client_flows_df, cond1, 'inner')
+        .join(client_flows_after_agg_df, cond1, 'inner')\
+        .drop(sessions_df.session_uuid)
 
     cond2 = [first_join_df.session_uuid == page_loads_joined_df.session_uuid]
-    final_res_df = sessions_df \
-        .join(page_loads_joined_df, cond2, 'inner')
-
-    final_res_df.printSchema()
+    final_res_df = first_join_df \
+        .join(page_loads_joined_df, cond2, 'inner')\
+        .drop(first_join_df.session_uuid)
 
     final_res_df.coalesce(1).write.mode('overwrite') \
         .option('header', 'true') \
         .parquet("result.parquet")
+
+    print(final_res_df.take(10))
 
     # inner_join_df.write.mode('overwrite') \
     #     .option('header', 'true') \
